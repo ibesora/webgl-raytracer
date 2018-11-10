@@ -2,7 +2,11 @@
 #define MAX_FLOAT 3.402823466e+38
 #define AA_NUM_SAMPLES 16
 #define MAX_RANDOM_ITERATIONS 3
-#define RAY_BOUNCES 5
+#define RAY_BOUNCES 50
+
+#define LAMBERTIAN 0
+#define METAL 1
+
 precision highp float;
 
 
@@ -14,15 +18,25 @@ struct Ray {
     vec3 direction;
 };
 
+struct Material {
+
+    uint type;
+    vec3 albedo;
+    float fuzzyness;
+
+};
+
 struct HitRecord {
     float t;
     vec3 p;
     vec3 normal;
+    Material material;
 };
 
 struct Sphere {
     vec3 center;
     float radius;
+    Material material;
 };
 
 struct Camera {
@@ -37,7 +51,7 @@ struct Camera {
 // https://thebookofshaders.com/10/
 float random (vec2 st) {
     return fract(sin(dot(st.xy,
-                         vec2(12.9898,78.233)))*
+        vec2(12.9898,78.233)))*
         43758.5453123);
 }
 
@@ -77,6 +91,7 @@ bool hitSphere(Sphere s, Ray r, float tMin, float tMax, out HitRecord hit) {
             hit.t = t;
             hit.p = rayAtDistance(r, t);
             hit.normal = (hit.p - s.center) / s.radius;
+            hit.material = s.material;
         }
 
     }
@@ -85,7 +100,7 @@ bool hitSphere(Sphere s, Ray r, float tMin, float tMax, out HitRecord hit) {
 
 }
 
-bool hitList(Sphere[2] spheres, Ray r, float tMin, float tMax, out HitRecord hit) {
+bool hitList(Sphere[4] spheres, Ray r, float tMin, float tMax, out HitRecord hit) {
 
     HitRecord temp;
     bool hitAnything = false;
@@ -132,21 +147,61 @@ vec3 randomPointInUnitSphere(vec3 pos) {
 
 }
 
-vec3 color(Ray r, Sphere[2] world) {
+bool lambertianScatter(Ray rayIn, HitRecord rec, out vec3 attenuation, out Ray scatteredRay) {
+
+    vec3 target = rec.p + rec.normal + randomPointInUnitSphere(rec.p);
+    scatteredRay = Ray(rec.p, target - rec.p);
+    attenuation = rec.material.albedo;
+    return true;
+
+}
+
+bool metalScatter(Ray rayIn, HitRecord rec, out vec3 attenuation, out Ray scatteredRay) {
+    
+    vec3 reflected = reflect(normalize(rayIn.direction), rec.normal);
+    scatteredRay = Ray(rec.p, reflected + rec.material.fuzzyness * randomPointInUnitSphere(rec.p));
+    attenuation = rec.material.albedo;
+    return (dot(scatteredRay.direction, rec.normal) > 0.0);
+}
+
+vec3 color(Ray r, Sphere[4] world) {
 
     HitRecord rec;
     bool hasFinished = false;
     Ray currentRay = r;
-    float contribution = 1.0;
-    vec3 color;
+    vec3 attenuation = vec3(1.0);
+    vec3 color = vec3(0.0);
 
     for(int bounce = 0; bounce < RAY_BOUNCES && !hasFinished; ++bounce) {
 
         if(hitList(world, currentRay, 0.001, MAX_FLOAT, rec)) {
 
-            vec3 target = rec.p + rec.normal + randomPointInUnitSphere(rec.p);
-            currentRay = Ray(rec.p, target - rec.p);
-            contribution *= 0.5;
+            bool keepBouncing = false;
+            vec3 materialAttenuation = vec3(1.0);
+            Ray scatteredRay = Ray(vec3(0.0), vec3(0.0));
+
+            if(rec.material.type == uint(LAMBERTIAN)) {
+
+                keepBouncing = lambertianScatter(currentRay, rec, materialAttenuation, scatteredRay);
+
+
+            } else if(rec.material.type == uint(METAL)) {
+
+                keepBouncing = metalScatter(currentRay, rec, materialAttenuation, scatteredRay);
+
+            }
+
+            if(keepBouncing) {
+
+                currentRay = scatteredRay;
+                attenuation *= materialAttenuation;
+
+            } else {
+
+                color = vec3(0.0);
+                hasFinished = true;
+
+            }
 
         } else {
 
@@ -159,7 +214,7 @@ vec3 color(Ray r, Sphere[2] world) {
 
     }
 
-    return contribution * color;
+    return attenuation * color;
 
 }
 
@@ -171,9 +226,11 @@ void main(void) {
     vec3 cameraVertical = vec3(0.0, 2.0, 0.0);
 
     Camera cam = Camera(cameraOrigin, cameraLowerLeftCorner, cameraHorizontal, cameraVertical);
-    Sphere world[2];
-    world[0] = Sphere(vec3(0.0, 0.0, -1.0), 0.5);
-    world[1] = Sphere(vec3(0.0, -100.5, -1.0), 100.0);
+    Sphere world[4];
+    world[0] = Sphere(vec3(0.0, 0.0, -1.0), 0.5, Material(uint(LAMBERTIAN), vec3(0.8, 0.3, 0.3), 1.0));
+    world[1] = Sphere(vec3(0.0, -100.5, -1.0), 100.0, Material(uint(LAMBERTIAN), vec3(0.8, 0.8, 0.0), 1.0));
+    world[2] = Sphere(vec3(1.0, 0.0, -1.0), 0.5, Material(uint(METAL), vec3(0.8, 0.6, 0.2), 0.0));
+    world[3] = Sphere(vec3(-1.0, 0.0, -1.0), 0.5, Material(uint(METAL), vec3(0.8, 0.8, 0.8), 1.0));
     
     vec3 col = vec3(0.0, 0.0, 0.0);
     
