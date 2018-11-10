@@ -6,6 +6,7 @@
 
 #define LAMBERTIAN 0
 #define METAL 1
+#define DIELECTRIC 2
 
 precision highp float;
 
@@ -23,6 +24,7 @@ struct Material {
     uint type;
     vec3 albedo;
     float fuzzyness;
+    float refractionIndex;
 
 };
 
@@ -164,6 +166,55 @@ bool metalScatter(Ray rayIn, HitRecord rec, out vec3 attenuation, out Ray scatte
     return (dot(scatteredRay.direction, rec.normal) > 0.0);
 }
 
+float schlick(float cosine, float refractionIndex) {
+
+    float r0 = (1.0 - refractionIndex) / (1.0 + refractionIndex);
+    r0 = r0*r0;
+    return r0 * (1.0 - r0)*pow((1.0 - cosine), 5.0);
+
+}
+
+bool dielectricScatter(Ray rayIn, HitRecord rec, out vec3 attenuation, out Ray scatteredRay) {
+
+    vec3 outwardNormal;
+    float niOverNt;
+    vec3 refracted;
+    float reflectProbability = 1.0;
+    float cosine;
+    vec3 reflected = reflect(rayIn.direction, rec.normal);
+    
+    attenuation = vec3(1.0);
+    if(dot(rayIn.direction, rec.normal) > 0.0) {
+
+        outwardNormal = -rec.normal;
+        niOverNt = rec.material.refractionIndex;
+        cosine = rec.material.refractionIndex * dot(rayIn.direction, rec.normal) / length(rayIn.direction);
+
+    } else {
+
+        outwardNormal = rec.normal;
+        niOverNt = 1.0 / rec.material.refractionIndex;
+        cosine = -dot(rayIn.direction, rec.normal) / length(rayIn.direction);
+
+    }
+
+    refracted = refract(normalize(rayIn.direction), normalize(outwardNormal), niOverNt);
+    bool isRefracted = refracted.x != 0.0 || refracted.y != 0.0 || refracted.z != 0.0;
+
+    if(isRefracted) {
+        reflectProbability = schlick(cosine, rec.material.refractionIndex);
+    }
+
+    if(random(rec.p.xy) < reflectProbability) {
+        scatteredRay = Ray(rec.p, reflected);
+    } else {
+        scatteredRay = Ray(rec.p, refracted);
+    }
+
+    return true;
+
+}
+
 vec3 color(Ray r, Sphere[4] world) {
 
     HitRecord rec;
@@ -188,6 +239,10 @@ vec3 color(Ray r, Sphere[4] world) {
             } else if(rec.material.type == uint(METAL)) {
 
                 keepBouncing = metalScatter(currentRay, rec, materialAttenuation, scatteredRay);
+
+            } else if(rec.material.type == uint(DIELECTRIC)) {
+
+                keepBouncing = dielectricScatter(currentRay, rec, materialAttenuation, scatteredRay);
 
             }
 
@@ -227,10 +282,10 @@ void main(void) {
 
     Camera cam = Camera(cameraOrigin, cameraLowerLeftCorner, cameraHorizontal, cameraVertical);
     Sphere world[4];
-    world[0] = Sphere(vec3(0.0, 0.0, -1.0), 0.5, Material(uint(LAMBERTIAN), vec3(0.8, 0.3, 0.3), 1.0));
-    world[1] = Sphere(vec3(0.0, -100.5, -1.0), 100.0, Material(uint(LAMBERTIAN), vec3(0.8, 0.8, 0.0), 1.0));
-    world[2] = Sphere(vec3(1.0, 0.0, -1.0), 0.5, Material(uint(METAL), vec3(0.8, 0.6, 0.2), 0.0));
-    world[3] = Sphere(vec3(-1.0, 0.0, -1.0), 0.5, Material(uint(METAL), vec3(0.8, 0.8, 0.8), 1.0));
+    world[0] = Sphere(vec3(0.0, 0.0, -1.0), 0.5, Material(uint(LAMBERTIAN), vec3(0.8, 0.3, 0.3), 1.0, 0.0));
+    world[1] = Sphere(vec3(0.0, -100.5, -1.0), 100.0, Material(uint(LAMBERTIAN), vec3(0.8, 0.8, 0.0), 1.0, 0.0));
+    world[2] = Sphere(vec3(1.0, 0.0, -1.0), 0.5, Material(uint(METAL), vec3(0.8, 0.6, 0.2), 0.0, 0.0));
+    world[3] = Sphere(vec3(-1.0, 0.0, -1.0), 0.5, Material(uint(DIELECTRIC), vec3(0.8, 0.8, 0.8), 1.0, 1.5));
     
     vec3 col = vec3(0.0, 0.0, 0.0);
     
