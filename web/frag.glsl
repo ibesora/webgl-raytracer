@@ -1,6 +1,7 @@
 #version 300 es
-
+#define MAX_FLOAT 3.402823466e+38
 precision highp float;
+
 
 uniform vec2 windowSize;
 out vec4 fragmentColor;
@@ -8,6 +9,17 @@ out vec4 fragmentColor;
 struct Ray {
     vec3 origin;
     vec3 direction;
+};
+
+struct HitRecord {
+    float t;
+    vec3 p;
+    vec3 normal;
+};
+
+struct Sphere {
+    vec3 center;
+    float radius;
 };
 
 vec3 cameraOrigin = vec3(0.0, 0.0, 0.0);
@@ -21,24 +33,85 @@ Ray getRay(float u, float v) {
 
 }
 
-bool hitSphere(vec3 center, float radius, Ray r) {
+vec3 rayAtDistance(Ray r, float distance) {
 
-    vec3 oc = r.origin - center;
-    float a = dot(r.direction, r.direction);
-    float b = 2.0 * dot(oc, r.direction);
-    float c = dot(oc, oc) - radius*radius;
-    float discriminant = b*b - 4.0*a*c;
-    return discriminant > 0.0;
+    return r.origin + r.direction * distance;
 
 }
 
-vec3 color(Ray r) {
+bool hitSphere(Sphere s, Ray r, float tMin, float tMax, out HitRecord hit) {
 
-    if(hitSphere(vec3(0.0, 0.0, -1.0), 0.5, r))
-        return vec3(1.0, 0.0, 0.0);
+    vec3 oc = r.origin - s.center;
+    float a = dot(r.direction, r.direction);
+    float b = dot(oc, r.direction);
+    float c = dot(oc, oc) - s.radius*s.radius;
+    float discriminant = b*b - a*c;
+    bool hasHit = (discriminant > 0.0);
+    bool inRange = false;
+
+    if(hasHit) {
+        float sqrtDiscriminant = sqrt(discriminant);
+        float t = (-b - sqrtDiscriminant) / a;
+        inRange = tMin < t && t < tMax;
+
+        if(!inRange) {
+            t = (-b + sqrtDiscriminant) / a;
+            inRange = tMin < t && t < tMax;
+        }
+
+        if(inRange) {
+            hit.t = t;
+            hit.p = rayAtDistance(r, t);
+            hit.normal = (hit.p - s.center) / s.radius;
+        }
+
+    }
+
+    return hasHit && inRange;
+
+}
+
+bool hitList(Sphere[2] spheres, Ray r, float tMin, float tMax, out HitRecord hit) {
+
+    HitRecord temp;
+    bool hitAnything = false;
+    float closest = tMax;
+
+    for(int i=0; i<spheres.length(); ++i) {
+
+        if(hitSphere(spheres[i], r, tMin, closest, temp)) {
+
+            hitAnything = true;
+            closest = temp.t;
+            hit = temp;
+
+        }
+
+    }
+
+    return hitAnything;
+
+}
+
+float minus2Positive(float value) {
+    return 0.5 * (value + 1.0);
+}
+
+vec3 minus2Positive(vec3 vec) {
+    return vec3(minus2Positive(vec.x), minus2Positive(vec.y), minus2Positive(vec.z));
+}
+
+vec3 color(Ray r, Sphere[2] world) {
+
+    HitRecord rec;
+    if(hitList(world, r, 0.0, MAX_FLOAT, rec)) {
+
+        return vec3(minus2Positive(rec.normal));
+
+    }
 
     vec3 unitVector = normalize(r.direction);
-    float t = 0.5*(unitVector.y + 1.0);
+    float t = minus2Positive(unitVector.y);
     return (1.0 - t)*vec3(1.0, 1.0, 1.0) + t*vec3(0.5, 0.7, 1.0);
 }
 
@@ -47,5 +120,8 @@ void main(void) {
     float u = gl_FragCoord.x / windowSize.x;
     float v = gl_FragCoord.y / windowSize.y;
     Ray r = getRay(u, v);
-    fragmentColor = vec4(color(r), 1.0);
+    Sphere world[2];
+    world[0] = Sphere(vec3(0.0, 0.0, -1.0), 0.5);
+    world[1] = Sphere(vec3(0.0, -100.5, -1.0), 100.0);
+    fragmentColor = vec4(color(r, world), 1.0);
 }
