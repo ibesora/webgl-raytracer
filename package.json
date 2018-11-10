@@ -1,0 +1,28 @@
+{
+  "name": "webgl-raytracer",
+  "version": "0.0.1",
+  "description": "A simple WebGL raytracer",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "serve": "reload -b -d web -p 1234"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ibesora/webgl-raytracer.git"
+  },
+  "keywords": [
+    "webgl",
+    "raytracer"
+  ],
+  "author": "ibesora",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ibesora/webgl-raytracer/issues"
+  },
+  "homepage": "https://github.com/ibesora/webgl-raytracer#readme",
+  "dependencies": {},
+  "devDependencies": {
+    "reload": "^2.3.1"
+  }
+}
