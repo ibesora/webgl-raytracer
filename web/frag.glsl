@@ -1,5 +1,6 @@
 #version 300 es
 #define MAX_FLOAT 3.402823466e+38
+#define AA_NUM_SAMPLES 16
 precision highp float;
 
 
@@ -22,14 +23,25 @@ struct Sphere {
     float radius;
 };
 
-vec3 cameraOrigin = vec3(0.0, 0.0, 0.0);
-vec3 cameraLowerLeftCorner = vec3(-2.0, -1.0, -1.0);
-vec3 cameraHorizontal = vec3(4.0, 0.0, 0.0);
-vec3 cameraVertical = vec3(0.0, 2.0, 0.0);
+struct Camera {
 
-Ray getRay(float u, float v) {
+    vec3 origin;
+    vec3 lowerLeftCorner;
+    vec3 horizontal;
+    vec3 vertical;
 
-  return Ray(cameraOrigin, cameraLowerLeftCorner + u * cameraHorizontal + v * cameraVertical);
+};
+
+// https://thebookofshaders.com/10/
+float random (vec2 st) {
+    return fract(sin(dot(st.xy,
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
+}
+
+Ray getRay(Camera cam, float u, float v) {
+
+    return Ray(cam.origin, cam.lowerLeftCorner + u * cam.horizontal + v * cam.vertical);
 
 }
 
@@ -117,11 +129,28 @@ vec3 color(Ray r, Sphere[2] world) {
 
 void main(void) {
 
-    float u = gl_FragCoord.x / windowSize.x;
-    float v = gl_FragCoord.y / windowSize.y;
-    Ray r = getRay(u, v);
+    vec3 cameraOrigin = vec3(0.0, 0.0, 0.0);
+    vec3 cameraLowerLeftCorner = vec3(-2.0, -1.0, -1.0);
+    vec3 cameraHorizontal = vec3(4.0, 0.0, 0.0);
+    vec3 cameraVertical = vec3(0.0, 2.0, 0.0);
+
+    Camera cam = Camera(cameraOrigin, cameraLowerLeftCorner, cameraHorizontal, cameraVertical);
     Sphere world[2];
     world[0] = Sphere(vec3(0.0, 0.0, -1.0), 0.5);
     world[1] = Sphere(vec3(0.0, -100.5, -1.0), 100.0);
-    fragmentColor = vec4(color(r, world), 1.0);
+    
+    vec3 col = vec3(0.0, 0.0, 0.0);
+    
+    for(int i=0; i<AA_NUM_SAMPLES; ++i) {
+
+        float randX = random((gl_FragCoord.xy + float(i))/windowSize.xy);
+        float randY = random((gl_FragCoord.yx + float(i))/windowSize.yx);
+        vec2 uv = (gl_FragCoord.xy + vec2(randX, randY)) / windowSize.xy;
+        Ray r = getRay(cam, uv.x, uv.y);
+        col += color(r, world);
+
+    }
+
+    fragmentColor = vec4(col / float(AA_NUM_SAMPLES), 1.0);
+
 }
