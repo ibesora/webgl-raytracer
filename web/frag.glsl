@@ -1,6 +1,8 @@
 #version 300 es
 #define MAX_FLOAT 3.402823466e+38
 #define AA_NUM_SAMPLES 16
+#define MAX_RANDOM_ITERATIONS 3
+#define RAY_BOUNCES 5
 precision highp float;
 
 
@@ -113,18 +115,52 @@ vec3 minus2Positive(vec3 vec) {
     return vec3(minus2Positive(vec.x), minus2Positive(vec.y), minus2Positive(vec.z));
 }
 
+float squaredLength(vec3 v) {
+    return dot(v, v);
+}
+
+vec3 randomPointInUnitSphere(vec3 pos) {
+
+    vec3 p;
+    int iters = 0;
+    do {
+        p = vec3(random(pos.xy), random(pos.yz), random(pos.xz));
+        iters++;
+    } while((squaredLength(p) >= 1.0) && iters < MAX_RANDOM_ITERATIONS);
+
+    return p;
+
+}
+
 vec3 color(Ray r, Sphere[2] world) {
 
     HitRecord rec;
-    if(hitList(world, r, 0.0, MAX_FLOAT, rec)) {
+    bool hasFinished = false;
+    Ray currentRay = r;
+    float contribution = 1.0;
+    vec3 color;
 
-        return vec3(minus2Positive(rec.normal));
+    for(int bounce = 0; bounce < RAY_BOUNCES && !hasFinished; ++bounce) {
+
+        if(hitList(world, currentRay, 0.001, MAX_FLOAT, rec)) {
+
+            vec3 target = rec.p + rec.normal + randomPointInUnitSphere(rec.p);
+            currentRay = Ray(rec.p, target - rec.p);
+            contribution *= 0.5;
+
+        } else {
+
+            vec3 unitVector = normalize(r.direction);
+            float t = minus2Positive(unitVector.y);
+            color = (1.0 - t)*vec3(1.0, 1.0, 1.0) + t*vec3(0.5, 0.7, 1.0);
+            hasFinished = true;
+
+        }
 
     }
 
-    vec3 unitVector = normalize(r.direction);
-    float t = minus2Positive(unitVector.y);
-    return (1.0 - t)*vec3(1.0, 1.0, 1.0) + t*vec3(0.5, 0.7, 1.0);
+    return contribution * color;
+
 }
 
 void main(void) {
@@ -151,6 +187,7 @@ void main(void) {
 
     }
 
-    fragmentColor = vec4(col / float(AA_NUM_SAMPLES), 1.0);
+    vec3 nonGammaCorrectedColor = col / float(AA_NUM_SAMPLES);
+    fragmentColor = vec4(sqrt(nonGammaCorrectedColor), 1.0);
 
 }
